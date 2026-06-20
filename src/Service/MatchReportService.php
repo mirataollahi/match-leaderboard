@@ -69,6 +69,8 @@ class MatchReportService
         // Step 4: Atomic transaction
         $newScore = 0;
 
+        // todo : Check how correct way transaction
+        // todo : Is this a real transaction
         ConnectionManager::get('default')->transactional(
             function () use ($data, $user, &$newScore): void {
                 // a) INSERT match_reports

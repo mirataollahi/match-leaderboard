@@ -11,6 +11,7 @@ use Throwable;
  */
 class HyperLogger
 {
+    // todo : Use the cakephp main logger as parent class
     /**
      * Default log directory path relative to project root
      *

@@ -14,15 +14,9 @@ use Cake\Log\Log;
 
 /**
  * RateLimitMiddleware
- *
- * Applies a sliding-window rate limit keyed by (client IP + user_id).
- * Only applied to routes that carry a user_id in the JSON body.
- *
- * Limit: configurable via Leaderboard.rate_limit (default 5 req / 10 sec).
- *
- * When Redis is unavailable the check is skipped (fail-open) and a warning is logged.
- * Returns 429 with Retry-After header when limit is exceeded.
  */
+
+// todo : Use the rate limit instead of using it in parent base api controller class
 class RateLimitMiddleware implements MiddlewareInterface
 {
     private RedisService $redis;

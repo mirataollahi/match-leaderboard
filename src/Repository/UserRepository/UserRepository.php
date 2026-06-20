@@ -100,6 +100,7 @@ class UserRepository implements UserRepositoryInterface
         $connection = ConnectionManager::get('default');
 
         // Raw UPDATE with relative delta — safe under concurrent load
+        // todo : Use ORM here instead of database exec
         $connection->execute(
             'UPDATE users SET score = score + :delta, updated_at = NOW() WHERE id = :id',
             [':delta' => $scoreDelta, ':id' => $userId],
