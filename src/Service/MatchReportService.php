@@ -92,14 +92,14 @@ class MatchReportService
             },
         );
 
-        // ── Step 5: Update Redis leaderboard (non-fatal) ─────
+        // Step 5: Update Redis leaderboard (non-fatal)
         $this->redis->upsertLeaderboardScore(
             (int)$data['user_id'],
             (string)$user->name,
             $newScore,
         );
 
-        // ── Step 6: Cache idempotency result in Redis ─────────
+        // Step 6: Cache idempotency result in Redis
         $response = [
             'success' => true,
             'duplicate' => false,
@@ -113,7 +113,7 @@ class MatchReportService
             array_merge($response, ['__hash' => $this->payloadHash($data)]),
         );
 
-        Log::info('[MatchReportService] Match recorded.', [
+        $matchReportInfo = json_encode([
             'scope' => 'match',
             'request_id' => $requestId,
             'user_id' => $data['user_id'],
@@ -121,7 +121,7 @@ class MatchReportService
             'result' => $data['result'],
             'new_score' => $newScore,
         ]);
-
+        HyperLogger::info('[MatchReportService] Match recorded.' . $matchReportInfo);
         return $response;
     }
 
@@ -165,7 +165,7 @@ class MatchReportService
      */
     private function resolveFromDatabase(
         MatchReport $existing,
-        array                         $data,
+        array       $data,
     ): array
     {
         $payloadMatches =

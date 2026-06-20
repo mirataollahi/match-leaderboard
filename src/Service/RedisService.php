@@ -181,6 +181,7 @@ class RedisService
             $scoreKey = $this->prefix . 'scores';
             $userKey = $this->prefix . 'user:' . $userId;
 
+            // Using multi command in one connection transaction to improve
             $this->redis->multi(Redis::PIPELINE);
             $this->redis->zAdd($scoreKey, $newScore, (string)$userId);
             $this->redis->hMSet($userKey, [
@@ -361,6 +362,7 @@ class RedisService
     private function markUnavailable(string $reason): void
     {
         $this->available = false;
+        HyperLogger::warning('[RedisService] Marked unavailable — ' . $reason);
         Log::warning('[RedisService] Marked unavailable — ' . $reason, ['scope' => 'redis']);
     }
 }
