@@ -1,29 +1,29 @@
 services:
-  match-score-server:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: match-score-server
-    restart: unless-stopped
-    ports:
-      - "8765:8765"
-    environment:
-      DEBUG: "false"
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_NAME: match-score
-      DB_USER: match-score
-      DB_PASS: "${DB_PASSWORD:-match-score-secret}"
-      REDIS_HOST: redis
-      REDIS_PORT: "6379"
-      SECURITY_SALT: "${SECURITY_SALT:-change-me-in-production-32-chars-min}"
-    volumes:
-      - .:/var/www/html
-    command: >
-      sh -c "
-        bin/cake migrations migrate &&
-        bin/cake server -H 0.0.0.0 -p 8765
-      "
+#  match-score-server:
+#    build:
+#      context: .
+#      dockerfile: Dockerfile
+#    container_name: match-score-server
+#    restart: unless-stopped
+#    ports:
+#      - "8765:8765"
+#    environment:
+#      DEBUG: "false"
+#      DB_HOST: postgres
+#      DB_PORT: "5432"
+#      DB_NAME: match-score
+#      DB_USER: match-score
+#      DB_PASS: "${DB_PASSWORD:-match-score-secret}"
+#      REDIS_HOST: redis
+#      REDIS_PORT: "6379"
+#      SECURITY_SALT: "${SECURITY_SALT:-change-me-in-production-32-chars-min}"
+#    volumes:
+#      - .:/var/www/html
+#    command: >
+#      sh -c "
+#        bin/cake migrations migrate &&
+#        bin/cake server -H 0.0.0.0 -p 8765
+#      "
 
 
   # Postgres database container
