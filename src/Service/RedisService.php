@@ -6,6 +6,7 @@ use Cake\Core\Configure;
 use Redis;
 use RedisException;
 use Cake\Log\Log;
+use Throwable;
 
 /**
  * RedisService
@@ -27,8 +28,12 @@ class RedisService
     /** @var int  Sliding window width in seconds. */
     private readonly int $rateLimitWindow;
 
-    public function __construct()
+    /** Using persist connection to redis server */
+    private bool $enablePersistConnection = true;
+
+    public function __construct(bool $enablePersistConnection = true)
     {
+        $this->enablePersistConnection = $enablePersistConnection;
         $lbCfg = Configure::read('Leaderboard', []);
 
         $this->prefix = (string)($lbCfg['redis_key_prefix'] ?? 'lb:');
@@ -48,11 +53,20 @@ class RedisService
         try {
             $r = new Redis();
 
-            $connected = $r->connect(
-                (string)($cfg['host'] ?? '127.0.0.1'),
-                (int)($cfg['port'] ?? 6379),
-                (float)($cfg['timeout'] ?? 2.0),
-            );
+            if ($this->enablePersistConnection) {
+                $connected = $r->pconnect(
+                    (string)($cfg['host'] ?? '127.0.0.1'),
+                    (int)($cfg['port'] ?? 6379),
+                    (float)($cfg['timeout'] ?? 2.0),
+                );
+            } else {
+                $connected = $r->connect(
+                    (string)($cfg['host'] ?? '127.0.0.1'),
+                    (int)($cfg['port'] ?? 6379),
+                    (float)($cfg['timeout'] ?? 2.0),
+                );
+            }
+
 
             if (!$connected) {
                 throw new RedisException('Redis::connect() returned false.');
@@ -68,7 +82,7 @@ class RedisService
             $this->redis = $r;
             $this->available = true;
         } catch (RedisException $e) {
-            Log::warning('[RedisService] Connection failed: ' . $e->getMessage(), ['scope' => 'redis']);
+            HyperLogger::error('[RedisService] Connection failed: ' . $e->getMessage());
         }
     }
 
@@ -142,7 +156,7 @@ class RedisService
             }
 
             return json_decode($data, true, 512, JSON_THROW_ON_ERROR);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $this->markUnavailable('getIdempotencyResult: ' . $e->getMessage());
             return null;
         }
