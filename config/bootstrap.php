@@ -186,4 +186,3 @@ ServerRequest::addDetector('tablet', function ($request) {
 /**
  * Bind repository interfaces
  */
-container()->add(UserRepositoryInterface::class, UserRepository::class);
