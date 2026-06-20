@@ -3,32 +3,16 @@
 A high-performance backend service for recording online game match results and
 serving a real-time player leaderboard. Built with **PHP 8.4** and **CakePHP 5**,
 backed by **PostgreSQL** and **Redis**.
-
----
-
-## Table of Contents
-
-1. [Requirements](#requirements)
-2. [Quick Start (Docker)](#quick-start-docker)
-3. [Manual Setup](#manual-setup)
-4. [Migrations & Seeds](#migrations--seeds)
-5. [Running the Server](#running-the-server)
-6. [Running Tests](#running-tests)
-7. [API Reference & Sample Requests](#api-reference--sample-requests)
-8. [Environment Variables](#environment-variables)
-9. [Architecture Overview](#architecture-overview)
-
 ---
 
 ## Requirements
 
-| Tool | Version |
-|------|---------|
-| PHP  | 8.4+    |
-| Composer | 2.x |
-| PostgreSQL | 15+ |
-| Redis | 7+   |
-| (Optional) Docker & Docker Compose | 24+ |
+| Tool                               | Version |
+|------------------------------------|---------|
+| PHP                                | 8.4+    |
+| PostgreSQL                         | 15+     |
+| Redis                              | 7+      |
+| (Optional) Docker & Docker Compose | 24+     |
 
 ---
 
@@ -38,126 +22,45 @@ backed by **PostgreSQL** and **Redis**.
 git clone <repo>
 cd match-score
 
-# Start all services (PHP-FPM + Nginx + PostgreSQL + Redis)
-docker-compose up -d
+composer i
+
+# Run pgsql container
+docker-compose up -d match-score-pgsql
+
+# Run match score redis container
+docker-compose up -d match-score-redis
 
 # Run migrations
 docker-compose exec app bin/cake migrations migrate
 
-# Seed sample data (20 players + match history)
-docker-compose exec app bin/cake migrations seed --seed GameDataSeeder
-
-# Verify health
-curl http://localhost:8765/health
+# Seed with pure php script
+php config/Seeds/pure_seeder.php
 ```
 
----
-
-## Manual Setup
-
-### 1. Install PHP dependencies
-
-```bash
-composer install
-```
-
-### 2. Configure environment
-
-Copy and edit the config file:
-
-```bash
-cp config/app.example.php config/app.php
-```
-
-Key settings to update:
-
-```php
-'Datasources' => [
-    'default' => [
-        'driver'   => \Cake\Database\Driver\Postgres::class,
-        'host'     => '127.0.0.1',
-        'port'     => 5432,
-        'username' => 'match-score',
-        'password' => 'your-password',
-        'database' => 'match-score',
-    ],
-],
-'Redis' => [
-    'host' => '127.0.0.1',
-    'port' => 6379,
-],
-```
-
-### 3. Create the PostgreSQL database
-
-```sql
-CREATE USER "match-score" WITH PASSWORD 'your-password';
-CREATE DATABASE "match-score" OWNER "match-score";
-```
-
----
-
-## Migrations & Seeds
-
-```bash
-# Run all migrations (creates users, match_reports, trophy_history tables)
-bin/cake migrations migrate
-
-# Rollback all migrations
-bin/cake migrations rollback
-
-# Seed 20 realistic players + match history
-bin/cake migrations seed --seed GameDataSeeder
-```
-
-The seeder is **idempotent** — it checks for existing data and skips if already present.
-
----
 
 ## Running the Server
 
 ```bash
 # Built-in PHP development server on port 8765
-bin/cake server -p 8765
+bin/cake server -p 8000
 
 # Or with a custom host
-bin/cake server -H 0.0.0.0 -p 8765
+php -S 0.0.0.0:8000 -t webroot
 ```
 
----
+## Swagger documents page
+Swagger api and requests documents are available on :
+http://localhost:8000/doc
+
 
 ## Running Tests
 
 ```bash
 # Run all tests
 vendor/bin/phpunit
-
-# Run only unit tests
-vendor/bin/phpunit tests/TestCase/Service/
-
 # Run only integration tests
 vendor/bin/phpunit tests/TestCase/Controller/
-
-# With coverage (requires Xdebug or PCOV)
-vendor/bin/phpunit --coverage-html coverage/
 ```
-
-### Test coverage includes:
-
-| Scenario | Test file |
-|----------|-----------|
-| Successful match report | `MatchReportServiceTest` |
-| Duplicate request — same payload | `MatchReportServiceTest`, `MatchesControllerTest` |
-| Duplicate request — different payload (conflict) | `MatchReportServiceTest`, `MatchesControllerTest` |
-| Validation errors (missing fields, invalid result) | `MatchesControllerTest` |
-| Non-existent user_id | `MatchReportServiceTest`, `MatchesControllerTest` |
-| Rate limiting (429) | `MatchesControllerTest` |
-| Leaderboard from Redis | `LeaderboardServiceTest` |
-| Fallback to SQL when Redis unavailable | `LeaderboardServiceTest` |
-| Fallback to SQL when Redis returns empty | `LeaderboardServiceTest` |
-| Pagination correctness | `LeaderboardServiceTest`, `LeaderboardControllerTest` |
-
----
 
 ## API Reference & Sample Requests
 
@@ -166,6 +69,7 @@ vendor/bin/phpunit --coverage-html coverage/
 Record a match result.
 
 **Request:**
+
 ```bash
 curl -X POST http://localhost:8765/matches/report \
   -H "Content-Type: application/json" \
@@ -180,53 +84,58 @@ curl -X POST http://localhost:8765/matches/report \
 ```
 
 **Success response (200):**
+
 ```json
 {
-  "success": true,
-  "duplicate": false,
-  "user_id": 12,
-  "match_id": "8801",
-  "new_score": 215
+    "success": true,
+    "duplicate": false,
+    "user_id": 12,
+    "match_id": "8801",
+    "new_score": 215
 }
 ```
 
 **Duplicate — same payload (200):**
+
 ```json
 {
-  "success": true,
-  "duplicate": true,
-  "user_id": 12,
-  "match_id": "8801",
-  "new_score": 215
+    "success": true,
+    "duplicate": true,
+    "user_id": 12,
+    "match_id": "8801",
+    "new_score": 215
 }
 ```
 
 **Duplicate — different payload (409):**
+
 ```json
 {
-  "success": false,
-  "error": "REQUEST_ID_CONFLICT"
+    "success": false,
+    "error": "REQUEST_ID_CONFLICT"
 }
 ```
 
 **Validation error (422):**
+
 ```json
 {
-  "success": false,
-  "error": "VALIDATION_ERROR",
-  "errors": {
-    "result": "result must be one of: win, lose, draw."
-  }
+    "success": false,
+    "error": "VALIDATION_ERROR",
+    "errors": {
+        "result": "result must be one of: win, lose, draw."
+    }
 }
 ```
 
 **Rate limit exceeded (429):**
+
 ```json
 {
-  "success": false,
-  "error": "RATE_LIMIT_EXCEEDED",
-  "message": "Too many requests. Please retry after 8 seconds.",
-  "retry_after": 8
+    "success": false,
+    "error": "RATE_LIMIT_EXCEEDED",
+    "message": "Too many requests. Please retry after 8 seconds.",
+    "retry_after": 8
 }
 ```
 
@@ -237,33 +146,64 @@ curl -X POST http://localhost:8765/matches/report \
 Retrieve the top players.
 
 **Request:**
+
 ```bash
 curl "http://localhost:8765/leaderboard?limit=10&offset=0"
 ```
 
 **Response (Redis):**
+
 ```json
 {
-  "success": true,
-  "data": [
-    { "rank": 1, "user_id": 1, "name": "Alice",   "score": 320 },
-    { "rank": 2, "user_id": 2, "name": "Bob",     "score": 315 },
-    { "rank": 3, "user_id": 3, "name": "Charlie", "score": 300 }
-  ],
-  "source": "redis",
-  "meta": { "limit": 10, "offset": 0, "count": 3 }
+    "success": true,
+    "data": [
+        {
+            "rank": 1,
+            "user_id": 1,
+            "name": "Alice",
+            "score": 320
+        },
+        {
+            "rank": 2,
+            "user_id": 2,
+            "name": "Bob",
+            "score": 315
+        },
+        {
+            "rank": 3,
+            "user_id": 3,
+            "name": "Charlie",
+            "score": 300
+        }
+    ],
+    "source": "redis",
+    "meta": {
+        "limit": 10,
+        "offset": 0,
+        "count": 3
+    }
 }
 ```
 
 **Response (SQL fallback):**
+
 ```json
 {
-  "success": true,
-  "data": [
-    { "rank": 1, "user_id": 1, "name": "Alice", "score": 320 }
-  ],
-  "source": "sql",
-  "meta": { "limit": 10, "offset": 0, "count": 1 }
+    "success": true,
+    "data": [
+        {
+            "rank": 1,
+            "user_id": 1,
+            "name": "Alice",
+            "score": 320
+        }
+    ],
+    "source": "sql",
+    "meta": {
+        "limit": 10,
+        "offset": 0,
+        "count": 1
+    }
 }
 ```
 
@@ -279,10 +219,10 @@ curl http://localhost:8765/health
 
 ```json
 {
-  "status":    "ok",
-  "database":  "ok",
-  "redis":     "ok",
-  "timestamp": "2024-03-10T12:00:00+00:00"
+    "status": "ok",
+    "database": "ok",
+    "redis": "ok",
+    "timestamp": "2024-03-10T12:00:00+00:00"
 }
 ```
 
@@ -290,19 +230,19 @@ curl http://localhost:8765/health
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DEBUG` | `true` | CakePHP debug mode |
-| `SECURITY_SALT` | *(set in config)* | App security salt |
-| `DB_HOST` | `127.0.0.1` | PostgreSQL host |
-| `DB_PORT` | `5432` | PostgreSQL port |
-| `DB_NAME` | `match-score` | Database name |
-| `DB_USER` | `match-score` | DB username |
-| `DB_PASS` | — | DB password |
-| `REDIS_HOST` | `127.0.0.1` | Redis host |
-| `REDIS_PORT` | `6379` | Redis port |
-| `REDIS_PASSWORD` | `null` | Redis auth password |
-| `REDIS_DB` | `0` | Redis database index |
+| Variable         | Default           | Description          |
+|------------------|-------------------|----------------------|
+| `DEBUG`          | `true`            | CakePHP debug mode   |
+| `SECURITY_SALT`  | *(set in config)* | App security salt    |
+| `DB_HOST`        | `127.0.0.1`       | PostgreSQL host      |
+| `DB_PORT`        | `5432`            | PostgreSQL port      |
+| `DB_NAME`        | `match-score`     | Database name        |
+| `DB_USER`        | `match-score`     | DB username          |
+| `DB_PASS`        | —                 | DB password          |
+| `REDIS_HOST`     | `127.0.0.1`       | Redis host           |
+| `REDIS_PORT`     | `6379`            | Redis port           |
+| `REDIS_PASSWORD` | `null`            | Redis auth password  |
+| `REDIS_DB`       | `0`               | Redis database index |
 
 ---
 
@@ -343,15 +283,107 @@ RoutingMiddleware
                            ZREVRANGE    ORDER BY score DESC
 ```
 
-### Key design decisions
+## Questions
 
-- **No async queue for score updates**: Synchronous writes ensure idempotency
-  guarantees hold without distributed coordination overhead.
-- **Fail-open rate limiting**: Redis outages should not block legitimate match
-  reports. Strict limiting can be enforced at the API gateway layer in production.
-- **Composite PK on `trophy_history`**: `(user_id, match_id)` enforces exactly
-  one audit entry per player per match at the DB level.
-- **`autoRender = false`**: Controllers write JSON directly — no template engine
-  overhead for a pure API service.
+### 1. What happens if two concurrent requests are submitted for the same user?
 
-See [DESIGN.md](DESIGN.md) for deeper explanations of every architectural decision.
+- Layer 1 - `Database Row-Level Locking (Primary Defense)`:
+  In the UserRepository, PostgreSQL's SELECT ... FOR UPDATE acquires an exclusive row-level lock on the user's record
+  before updating the score. This serializes concurrent updates at the database level, preventing lost updates.
+  The second request waits until the first transaction commits or rolls back, ensuring each score delta is correctly
+  applied in sequence.
+
+- Layer 2 - `Redis Distributed Lock for Idempotency`:
+  The MatchReportService uses Redis SET NX (set if not exists) to acquire a distributed lock per request_id before
+  processing.
+  If two requests arrive with the same request_id, only one acquires the lock and processes; the other either finds the
+  cached result
+  or receives a concurrency exception. This prevents duplicate processing even across multiple application servers.
+
+
+- Layer 3 - `Queue-Based Serialization (For High Throughput)`:
+  For extreme concurrency scenarios, requests can be published to RabbitMQ with the user_id as the routing key. RabbitMQ
+  guarantees message ordering within the same routing key, naturally serializing operations per user without database
+  contention.
+
+#### Handling Different Scenarios:
+
+- Same request_id + same payload → Returns cached result with duplicate: true
+- Same request_id + different payload → Returns 409 REQUEST_ID_CONFLICT
+- Different request_id + same user → Row-level lock serializes updates correctly
+- High-frequency requests → Rate limiter (already implemented) blocks excessive calls
+
+### 2. What happens if the service goes down mid-operation?
+
+The system uses a layered recovery architecture ensuring data consistency regardless of when a crash occurs:
+
+- Layer 1 - `Database Transaction Atomicity`:
+  The MatchReportService.process() method wraps all three database operations (match_reports insert, users.score update,
+  trophy_history insert) in a single PostgreSQL transaction. This guarantees ACID properties:
+  Crash before transaction: Nothing is persisted, the request can be safely retried with the same request_id (
+  idempotent)
+  Crash during transaction: PostgreSQL's WAL (Write-Ahead Logging) automatically rolls back all partial changes. No
+  dirty
+  data remains
+  Crash after transaction commit: All three database records are permanently safe in PostgreSQL
+
+- Layer 2 - `Recovery Table for Non-Transactional Operations`:
+  Redis updates happen outside the database transaction to avoid distributed transactions. A recovery_points table
+  records
+  the pending Redis operation before it executes. If the service crashes after the database commit but before Redis
+  updates, a cron job (RecoverTransactionsCommand) runs every 5 minutes to:
+  Find recovery records older than 5 minutes with status pending_redis_update
+  Idempotently replay the Redis leaderboard update
+  Mark the recovery record as completed
+
+### 3. If the leaderboard gets much larger, how would you change the design?
+
+When scaling to millions of users, I evolve the architecture through four progressive optimizations:
+
+Optimization 1 - Redis Sorted Set Sharding:
+Split the single Redis sorted set into 16+ shards using consistent hashing based on user_id. Each shard holds a subset
+of users. The getTopPlayers operation uses a scatter-gather pattern: query the top N from each shard, merge results in
+application memory, and return the final sorted list. This distributes memory and computation across multiple Redis
+instances or cluster nodes.
+
+Optimization 2 - Tiered Caching Strategy:
+Implement three cache layers with different TTLs:
+
+- L1 - Application Memory Cache (5 seconds): Holds the most frequently accessed leaderboard pages in process memory
+- L2 - Redis Cache (60 seconds): Pre-computed leaderboard snapshots for common limit/offset combinations
+- L3 - PostgreSQL Materialized Views (5 minutes): Database-level pre-computed rankings refreshed periodically
+
+### 4. If we want weekly and monthly leaderboards, how would the design evolve?
+
+The design evolves using a time-bucketed key strategy with automated lifecycle management:
+
+Design Approach - Time-Bucketed Redis Keys:
+Instead of a single leaderboard key, the system maintains separate Redis sorted sets for each time period using a naming
+convention:
+
+- leaderboard:all_time — permanent, never expires
+- leaderboard:daily:2026-06-20 — TTL 3 days
+- leaderboard:weekly:2026-W25 — TTL 14 days
+- leaderboard:monthly:2026-06 — TTL 60 days
+
+### 5. If you want to add anti-cheat rules, where is the most appropriate place in your architecture?
+
+The most appropriate place is inside MatchReportService.process(), after validation but before the database transaction,
+implemented as a Pipeline Pattern with a separate background analysis service for complex pattern detection.
+
+Why This Location:
+
+Before the transaction prevents fraudulent data from being persisted, avoiding costly rollbacks or cleanup
+
+- After validation ensures the data is well-formed before running expensive anti-cheat checks
+- Inside the service rather than middleware keeps business logic cohesive and testable
+- Separate from the controller maintains single responsibility and allows reuse across different entry points (API, CLI,
+  queue consumers)
+
+Pipeline Design:
+Rules are executed sequentially from fastest/cheapest to slowest/most expensive. Each rule returns one of three
+decisions:
+
+- `PASS`: No violation, continue to next rule
+- `FLAG`: Suspicious but not definitive — process the request but mark it for admin review and log the violation
+- `BLOCK`: Definite cheating — reject the request immediately, stop processing remaining rules
