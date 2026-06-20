@@ -109,7 +109,7 @@ class Application extends BaseApplication
             ->addArgument(RedisService::class);
 
         $container->add(LeaderboardService::class)
-            ->addArgument(UserRepositoryInterface::class)
+            ->addArgument(UserRepository::class)
             ->addArgument(RedisService::class);
     }
 

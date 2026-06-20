@@ -2,13 +2,14 @@
 
 namespace App\Controller;
 
+use App\Service\HyperLogger;
 use App\Service\RedisService;
 use Cake\Datasource\ConnectionManager;
 use Cake\Http\Response;
 use JsonException;
 use Throwable;
 
-class HealthController extends AppController
+class HealthController extends BaseApiController
 {
     /**
      * Handle health index request
@@ -22,29 +23,31 @@ class HealthController extends AppController
         $this->request->allowMethod(['get']);
 
         $status = [
-            'success' => true,
-            'status' => 'healthy',
-            'timestamp' => time(),
             'services' => [
                 'database' => $this->checkDatabase(),
                 'redis' => $this->checkRedis($redisService),
             ],
         ];
 
-        // If any service is unhealthy, return 503
-        $hasIssues = false;
+        // Determine overall health status
+        $isHealthy = true;
         foreach ($status['services'] as $service => $health) {
             if (!$health) {
-                $hasIssues = true;
-                $status['status'] = 'unhealthy';
+                $isHealthy = false;
                 break;
             }
         }
 
-        return $this->response
-            ->withStatus($hasIssues ? 503 : 200)
-            ->withType('application/json')
-            ->withStringBody(json_encode($status, JSON_THROW_ON_ERROR));
+        return $this->successResponse(
+            array_merge(
+                [
+                    'status' => $isHealthy ? 'healthy' : 'unhealthy',
+                    'timestamp' => time(),
+                ],
+                $status
+            ),
+            $isHealthy ? 200 : 503
+        );
     }
 
     /**
@@ -59,6 +62,7 @@ class HealthController extends AppController
             $connection->execute('SELECT 1');
             return true;
         } catch (Throwable $e) {
+            HyperLogger::error("Check database health failed : {$e->getMessage()}");
             return false;
         }
     }

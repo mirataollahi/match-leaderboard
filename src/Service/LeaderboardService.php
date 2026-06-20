@@ -12,11 +12,11 @@ use Cake\ORM\TableRegistry;
 class LeaderboardService
 {
     /**
-     * @param UserRepositoryInterface $userRepo User persistence (for SQL fallback + seeding).
+     * @param UserRepositoryInterface $userRepository User persistence (for SQL fallback + seeding).
      * @param RedisService $redis Redis access layer.
      */
     public function __construct(
-        private readonly UserRepositoryInterface $userRepo,
+        private readonly UserRepositoryInterface $userRepository,
         private readonly RedisService            $redis,
     )
     {
@@ -95,7 +95,7 @@ class LeaderboardService
      */
     private function seedRedisFromDatabase(): void
     {
-        $users = $this->userRepo->allForLeaderboard();
+        $users = $this->userRepository->allForLeaderboard();
         $this->redis->seedLeaderboard($users);
     }
 }

@@ -34,13 +34,13 @@ class RedisService
     public function __construct(bool $enablePersistConnection = true)
     {
         $this->enablePersistConnection = $enablePersistConnection;
-        $lbCfg = Configure::read('Leaderboard', []);
+        $redisConfig = Configure::read('Redis.default', []);
 
-        $this->prefix = (string)($lbCfg['redis_key_prefix'] ?? 'lb:');
-        $this->rateLimitMax = (int)($lbCfg['rate_limit']['max_requests'] ?? 5);
-        $this->rateLimitWindow = (int)($lbCfg['rate_limit']['window_seconds'] ?? 10);
+        $this->prefix = (string)($redisConfig['redis_key_prefix'] ?? 'lb:');
+        $this->rateLimitMax = (int)($redisConfig['rate_limit']['max_requests'] ?? 5);
+        $this->rateLimitWindow = (int)($redisConfig['rate_limit']['window_seconds'] ?? 10);
 
-        $this->connect(Configure::read('Redis', []));
+        $this->connect($redisConfig);
     }
 
     /**
@@ -57,13 +57,13 @@ class RedisService
                 $connected = $r->pconnect(
                     (string)($cfg['host'] ?? '127.0.0.1'),
                     (int)($cfg['port'] ?? 6379),
-                    (float)($cfg['timeout'] ?? 2.0),
+                    (float)($cfg['timeout'] ?? 4.0),
                 );
             } else {
                 $connected = $r->connect(
                     (string)($cfg['host'] ?? '127.0.0.1'),
                     (int)($cfg['port'] ?? 6379),
-                    (float)($cfg['timeout'] ?? 2.0),
+                    (float)($cfg['timeout'] ?? 4.0),
                 );
             }
 
@@ -129,7 +129,7 @@ class RedisService
         try {
             $this->redis->setEx(
                 'idem:' . $requestId,
-                86_400,                                         // 24 h
+                86_400,
                 json_encode($payload, JSON_THROW_ON_ERROR),
             );
         } catch (\Throwable $e) {

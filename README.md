@@ -252,35 +252,60 @@ curl http://localhost:8765/health
 Client
   │
   ▼
-BodyParserMiddleware     ← parses JSON body
+BodyParserMiddleware       ← parses JSON body
   │
-RateLimitMiddleware      ← Redis INCR sliding window (5 req / 10 sec per IP+uid)
+RateLimitMiddleware        ← Redis INCR sliding window (5 req / 10 sec per IP+uid)
   │
 RoutingMiddleware
   │
   ├── POST /matches/report ──► MatchesController
   │                                  │
-  │                            validate input
+  │                           validate input
   │                                  │
-  │                            MatchReportService
-  │                              │         │
-  │                       Redis idem    DB fallback
-  │                       fast-path         │
-  │                              │    BEGIN TRANSACTION
-  │                              │      INSERT match_reports
-  │                              │      UPDATE users.score
-  │                              │      INSERT trophy_history
-  │                              │    COMMIT
-  │                              │
-  │                        Redis ZADD + HSET (leaderboard)
-  │                        Redis SETEX (idempotency cache)
+  │                           MatchReportService
+  │                                  │
+  │                           check request_id uniqueness
+  │                           (Redis SETNX fast-path +
+  │                            DB UNIQUE constraint fallback)
+  │                                  │
+  │                           ┌──────┴──────┐
+  │                           │             │
+  │                      duplicate       new request
+  │                      detected             │
+  │                           │          ┌─────▼──────────────────────┐
+  │                      compare         │  BEGIN TRANSACTION         │
+  │                      payload         │    INSERT match_reports    │
+  │                           │          │    SELECT users FOR UPDATE │
+  │                    ┌──────┴──────┐   │    UPDATE users.score      │
+  │                    │             │   │    INSERT trophy_history   │
+  │               same payload   different│  COMMIT                   │
+  │                    │         payload  └─────┬──────────────────────┘
+  │               return 200     return 409        │
+  │               duplicate:true REQUEST_ID   Redis ZADD leaderboard
+  │                              _CONFLICT    (update sorted set)
+  │                                                │
+  │                                          SETEX idempotency
+  │                                          cache (request_id
+  │                                          + payload hash +
+  │                                          response)
+  │                                                │
+  │                                          return 201 Created
+  │                                          duplicate: false
   │
   └── GET /leaderboard ──► LeaderboardController
                                   │
-                            LeaderboardService
+                           LeaderboardService
                               │           │
                            Redis        SQL fallback
-                           ZREVRANGE    ORDER BY score DESC
+                           ZREVRANGE    SELECT id, name, score
+                                        FROM users
+                                        ORDER BY score DESC
+                                        LIMIT ? OFFSET ?
+                                  │
+                              return with
+                              source: "redis"
+                              or
+                              source: "sql"
 ```
 
 ## Questions
@@ -318,7 +343,7 @@ RoutingMiddleware
 The system uses a layered recovery architecture ensuring data consistency regardless of when a crash occurs:
 
 - Layer 1 - `Database Transaction Atomicity`:
-  The MatchReportService.process() method wraps all three database operations (match_reports insert, users.score update,
+  The MatchReportService.process() method wraps all three database operations (match_reports insert, `users.score` update,
   trophy_history insert) in a single PostgreSQL transaction. This guarantees ACID properties:
   Crash before transaction: Nothing is persisted, the request can be safely retried with the same request_id (
   idempotent)
