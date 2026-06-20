@@ -1,0 +1,436 @@
+openapi: 3.0.3
+
+info:
+    title: Match Score API
+    description: |
+        Backend service for recording online game match results and serving a
+        real-time player leaderboard.
+    version: 1.0.0
+    contact:
+        name: Match Score API
+
+servers:
+    - url: http://localhost:8000
+      description: Local development server
+
+paths:
+
+    # ────────────────────────────────────────────────────────────
+    # POST /matches/report
+    # ────────────────────────────────────────────────────────────
+    /matches/report:
+        post:
+            tags: [Matches]
+            summary: Record a match result
+            description: |
+                Records the outcome of a single match for a player.
+
+                **Idempotency behaviour**
+                - Same `request_id` + same payload → `200` with `duplicate: true`.
+                  Score is NOT applied again.
+                - Same `request_id` + different payload → `409 REQUEST_ID_CONFLICT`.
+
+                **Atomicity**
+                The following three operations succeed or fail together:
+                1. `INSERT INTO match_reports`
+                2. `UPDATE users SET score = score + score_delta`
+                3. `INSERT INTO trophy_history`
+
+                **Rate limiting**
+                Maximum **5 requests per 10 seconds** per `(IP + user_id)`.
+                Headers `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and
+                `X-RateLimit-Reset` are returned on every response.
+            operationId: reportMatch
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/MatchReportRequest'
+                        examples:
+                            win:
+                                summary: Player wins a match
+                                value:
+                                    request_id: "9a7e91f2-1fd4-45a3-9ff0-2b3d9a0ef111"
+                                    user_id: 12
+                                    match_id: 8801
+                                    result: "win"
+                                    score_delta: 25
+                                    reported_at: 1710000000
+                            loss:
+                                summary: Player loses a match
+                                value:
+                                    request_id: "b2c3d4e5-0000-1111-2222-333344445555"
+                                    user_id: 12
+                                    match_id: 8802
+                                    result: "lose"
+                                    score_delta: -15
+                                    reported_at: 1710001000
+                            draw:
+                                summary: Match ends in a draw
+                                value:
+                                    request_id: "c3d4e5f6-aaaa-bbbb-cccc-ddddeeeeffffgg"
+                                    user_id: 12
+                                    match_id: 8803
+                                    result: "draw"
+                                    score_delta: 5
+                                    reported_at: 1710002000
+            responses:
+                "200":
+                    description: Match recorded successfully (or valid duplicate)
+                    headers:
+                        X-RateLimit-Limit:
+                            schema: { type: integer }
+                            description: Maximum requests allowed in the window
+                        X-RateLimit-Remaining:
+                            schema: { type: integer }
+                            description: Requests remaining in the current window
+                        X-RateLimit-Reset:
+                            schema: { type: integer }
+                            description: Seconds until the rate-limit window resets
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/MatchReportSuccess'
+                            examples:
+                                first_time:
+                                    summary: First-time successful report
+                                    value:
+                                        success: true
+                                        duplicate: false
+                                        user_id: 12
+                                        match_id: 8801
+                                        new_score: 215
+                                duplicate:
+                                    summary: Valid duplicate (same request_id + same payload)
+                                    value:
+                                        success: true
+                                        duplicate: true
+                                        user_id: 12
+                                        match_id: 8801
+                                        new_score: 215
+                "409":
+                    description: Same request_id with a different payload
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ConflictError'
+                            example:
+                                success: false
+                                error: "REQUEST_ID_CONFLICT"
+                "422":
+                    description: Validation failed
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                            example:
+                                success: false
+                                error: "VALIDATION_ERROR"
+                                errors:
+                                    result: "result must be one of: win, lose, draw."
+                                    reported_at: "reported_at must be a valid Unix timestamp."
+                "429":
+                    description: Rate limit exceeded
+                    headers:
+                        Retry-After:
+                            schema: { type: integer }
+                            description: Seconds to wait before retrying
+                        X-RateLimit-Limit:
+                            schema: { type: integer }
+                        X-RateLimit-Remaining:
+                            schema: { type: integer, example: 0 }
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RateLimitError'
+                            example:
+                                success: false
+                                error: "RATE_LIMIT_EXCEEDED"
+                                message: "Too many requests. Please retry after 8 seconds."
+                                retry_after: 8
+                "500":
+                    description: Internal server error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InternalError'
+
+    # ────────────────────────────────────────────────────────────
+    # GET /leaderboard
+    # ────────────────────────────────────────────────────────────
+    /leaderboard:
+        get:
+            tags: [Leaderboard]
+            summary: Get player leaderboard
+            description: |
+                Returns a paginated list of top players sorted by score (highest first).
+
+                **Data source**
+                - Primary: Redis sorted-set (`ZREVRANGE`) — O(log N + M)
+                - Fallback: PostgreSQL `ORDER BY score DESC` when Redis is unavailable
+                - The `source` field in the response tells you which path was used.
+
+                **Tie-breaker**
+                When two players have the same score, the player with the lower `user_id`
+                (earlier registration) ranks higher. This is consistent across both the
+                Redis and SQL paths.
+
+                **Pagination**
+                Use `limit` and `offset` query parameters. Maximum `limit` is 100.
+            operationId: getLeaderboard
+            parameters:
+                - name: limit
+                  in: query
+                  description: "Number of entries to return (1–100, default: 10)"
+                  required: false
+                  schema:
+                      type: integer
+                      minimum: 1
+                      maximum: 100
+                      default: 10
+                  example: 10
+                - name: offset
+                  in: query
+                  description: "Number of entries to skip (default: 0)"
+                  required: false
+                  schema:
+                      type: integer
+                      minimum: 0
+                      default: 0
+                  example: 0
+            responses:
+                "200":
+                    description: Leaderboard returned successfully
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/LeaderboardResponse'
+                            examples:
+                                redis_source:
+                                    summary: Served from Redis
+                                    value:
+                                        success: true
+                                        data:
+                                            - rank: 1
+                                              user_id: 7
+                                              name: "Alice"
+                                              score: 320
+                                            - rank: 2
+                                              user_id: 12
+                                              name: "Bob"
+                                              score: 315
+                                        source: "redis"
+                                        meta:
+                                            limit: 10
+                                            offset: 0
+                                            count: 2
+                                sql_fallback:
+                                    summary: Served from SQL (Redis unavailable)
+                                    value:
+                                        success: true
+                                        data:
+                                            - rank: 1
+                                              user_id: 7
+                                              name: "Alice"
+                                              score: 320
+                                        source: "sql"
+                                        meta:
+                                            limit: 10
+                                            offset: 0
+                                            count: 1
+                "500":
+                    description: Internal server error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/InternalError'
+
+    # ────────────────────────────────────────────────────────────
+    # GET /health
+    # ────────────────────────────────────────────────────────────
+    /health:
+        get:
+            tags: [Health]
+            summary: Service health check
+            description: |
+                Returns the status of all infrastructure dependencies.
+                Suitable for use as a load-balancer health-check endpoint.
+
+                Returns `200` only when both PostgreSQL and Redis are reachable.
+                Returns `503` when either dependency is unavailable.
+            operationId: healthCheck
+            responses:
+                "200":
+                    description: All systems operational
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/HealthResponse'
+                            example:
+                                status: "ok"
+                                database: "ok"
+                                redis: "ok"
+                                timestamp: "2024-03-10T12:00:00+00:00"
+                "503":
+                    description: One or more dependencies unavailable
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/HealthResponse'
+                            example:
+                                status: "degraded"
+                                database: "ok"
+                                redis: "unavailable"
+                                timestamp: "2024-03-10T12:00:00+00:00"
+
+# ──────────────────────────────────────────────────────────────
+# Component schemas
+# ──────────────────────────────────────────────────────────────
+components:
+    schemas:
+
+        MatchReportRequest:
+            type: object
+            required: [request_id, user_id, match_id, result, score_delta, reported_at]
+            properties:
+                request_id:
+                    type: string
+                    maxLength: 64
+                    description: Client-generated unique ID for this request. Used to enforce idempotency.
+                    example: "9a7e91f2-1fd4-45a3-9ff0-2b3d9a0ef111"
+                user_id:
+                    type: integer
+                    minimum: 1
+                    description: ID of the player who played the match.
+                    example: 12
+                match_id:
+                    type: integer
+                    description: ID of the match.
+                    example: 8801
+                result:
+                    type: string
+                    enum: [win, lose, draw]
+                    description: Outcome of the match for this player.
+                    example: "win"
+                score_delta:
+                    type: integer
+                    description: Points to add (positive) or deduct (negative) from the player's score.
+                    example: 25
+                reported_at:
+                    type: integer
+                    format: int64
+                    description: Unix timestamp of when the match ended.
+                    example: 1710000000
+
+        MatchReportSuccess:
+            type: object
+            properties:
+                success:
+                    type: boolean
+                    example: true
+                duplicate:
+                    type: boolean
+                    description: true if this request_id was already processed with the same payload.
+                    example: false
+                user_id:
+                    type: integer
+                    example: 12
+                match_id:
+                    type: integer
+                    example: 8801
+                new_score:
+                    type: integer
+                    description: Player's score after this match (or current score for duplicates).
+                    example: 215
+
+        LeaderboardEntry:
+            type: object
+            properties:
+                rank:
+                    type: integer
+                    description: 1-based rank position.
+                    example: 1
+                user_id:
+                    type: integer
+                    example: 7
+                name:
+                    type: string
+                    example: "Alice"
+                score:
+                    type: integer
+                    example: 320
+
+        LeaderboardResponse:
+            type: object
+            properties:
+                success:
+                    type: boolean
+                    example: true
+                data:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/LeaderboardEntry'
+                source:
+                    type: string
+                    enum: [redis, sql]
+                    description: Which storage backend served this response.
+                    example: "redis"
+                meta:
+                    type: object
+                    properties:
+                        limit:  { type: integer, example: 10 }
+                        offset: { type: integer, example: 0 }
+                        count:  { type: integer, example: 10 }
+
+        HealthResponse:
+            type: object
+            properties:
+                status:
+                    type: string
+                    enum: [ok, degraded]
+                database:
+                    type: string
+                    enum: [ok, unavailable]
+                redis:
+                    type: string
+                    enum: [ok, unavailable]
+                timestamp:
+                    type: string
+                    format: date-time
+
+        ConflictError:
+            type: object
+            properties:
+                success: { type: boolean, example: false }
+                error:   { type: string,  example: "REQUEST_ID_CONFLICT" }
+
+        ValidationError:
+            type: object
+            properties:
+                success:
+                    type: boolean
+                    example: false
+                error:
+                    type: string
+                    example: "VALIDATION_ERROR"
+                errors:
+                    type: object
+                    additionalProperties:
+                        type: string
+                    example:
+                        result: "result must be one of: win, lose, draw."
+
+        RateLimitError:
+            type: object
+            properties:
+                success:     { type: boolean, example: false }
+                error:       { type: string,  example: "RATE_LIMIT_EXCEEDED" }
+                message:     { type: string,  example: "Too many requests. Please retry after 8 seconds." }
+                retry_after: { type: integer, example: 8 }
+
+        InternalError:
+            type: object
+            properties:
+                success: { type: boolean, example: false }
+                error:   { type: string,  example: "INTERNAL_SERVER_ERROR" }

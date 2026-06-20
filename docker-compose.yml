@@ -1,0 +1,67 @@
+services:
+  match-score-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: match-score-server
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    environment:
+      DEBUG: "false"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: match-score
+      DB_USER: match-score
+      DB_PASS: "${DB_PASSWORD:-match-score-secret}"
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      SECURITY_SALT: "${SECURITY_SALT:-change-me-in-production-32-chars-min}"
+    volumes:
+      - .:/var/www/html
+    command: >
+      sh -c "
+        bin/cake migrations migrate &&
+        bin/cake server -H 0.0.0.0 -p 8765
+      "
+
+
+  # Postgres database container
+  match-score-pgsql:
+    image: postgres:15
+    container_name: match-score-pgsql
+    restart: always
+    environment:
+      POSTGRES_USER: match-score
+      POSTGRES_DB: match-score
+      POSTGRES_PASSWORD: 3SI94b2qgt8Rg7prq4wP2oxn
+    ports:
+      - "54324:5432"
+    volumes:
+      - pgsql-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U messenger" ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+  # Redis datastore
+  match-score-redis:
+    image: redis:alpine
+    container_name: match-score-redis
+    restart: always
+    ports:
+      - "63794:6379"
+    command: [ "redis-server", "--requirepass", "8uWGdLYj9Pm6ste2RUckSFiH4357gr" ]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-a", "8uWGdLYj9Pm6ste2RUckSFiH4357gr", "ping" ]
+      interval: 60s
+      timeout: 5s
+      retries: 5
+
+# Container static volumes in docker
+volumes:
+  pgsql-data:
+  redis-data:
