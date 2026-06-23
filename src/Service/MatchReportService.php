@@ -66,6 +66,7 @@ class MatchReportService
             throw new UserNotFoundException((int)$data['user_id']);
         }
 
+
         // Step 4: Atomic transaction
         $newScore = 0;
 

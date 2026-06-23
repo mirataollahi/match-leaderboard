@@ -3,73 +3,119 @@
 namespace App\Repository\MatchReportRepository;
 
 use App\Model\Entity\MatchReport;
+use App\Model\Entity\User;
+use App\Model\Table\MatchReportsTable;
+use Cake\ORM\Locator\LocatorAwareTrait;
+use Cake\ORM\Table;
 use Cake\ORM\TableRegistry;
+use DateTime;
 use RuntimeException;
 use Throwable;
+use Exception;
 
-/**
- * CakePHP ORM implementation of MatchReportRepositoryInterface.
- */
 class MatchReportRepository implements MatchReportRepositoryInterface
 {
-    /**
-     * Look up an existing match report by the idempotency key.
-     *
-     * @param string $requestId Client-supplied idempotency key.
-     * @return MatchReport|null  Existing entity or null on first submission.
-     */
-    public function findByRequestId(string $requestId): ?MatchReport
-    {
-        $table = TableRegistry::getTableLocator()->get('MatchReports');
-        /** @var MatchReport|null $report */
-        $report = $table->find()
-            ->where(['request_id' => $requestId])
-            ->first();
+    use LocatorAwareTrait;
 
-        return $report;
+    /**
+     * Match report ORM  table class
+     *
+     * @var MatchReportsTable|Table
+     */
+    public MatchReportsTable|Table $matchReportsTable;
+
+    /**
+     * Create match report repository and inject it dependencies
+     */
+    public function __construct()
+    {
+        $this->matchReportsTable = $this->fetchTable('MatchReports');
     }
 
     /**
-     * Persist a new match_reports row.
+     * Find a match report base on it request id
      *
-     * @param array<string, mixed> $data Validated and normalised request fields.
-     * @return MatchReport The freshly saved entity.
-     * @throws RuntimeException When entity validation or save fails.
+     * @param string $requestId Client store match report request id
+     * @return MatchReport|null  Existing entity or null on first submission
+     */
+    public function findByRequestId(string $requestId): ?MatchReport
+    {
+        return $this->matchReportsTable->find()
+            ->where(['request_id' => $requestId])->first();
+    }
+
+    /**
+     * Create new match report base on it data
+     *
+     * @param array<string, mixed> $data Validated and normalized store request data
+     * @return MatchReport The created match report in database
+     * @throws RuntimeException Failed to insert match report in database exception
      */
     public function create(array $data): MatchReport
     {
         try {
-            $table = TableRegistry::getTableLocator()->get('MatchReports');
+            $preparedData = $this->prepareData($data);
+            $entity = $this->matchReportsTable->newEntity($preparedData);
 
-            /** @var MatchReport $entity */
-            $entity = $table->newEntity([
-                'request_id' => $data['request_id'],
-                'user_id' => (int)$data['user_id'],
-                'match_id' => (string)$data['match_id'],
-                'result' => $data['result'],
-                'score_delta' => (int)$data['score_delta'],
-                'reported_at' => (new \DateTime())->setTimestamp((int)$data['reported_at']),
-            ], ['accessibleFields' => [
-                'request_id' => true,
-                'user_id' => true,
-                'match_id' => true,
-                'result' => true,
-                'score_delta' => true,
-                'reported_at' => true,
-            ]]);
-
+            // Validate the match report before insert
             if ($entity->hasErrors()) {
-                throw new RuntimeException('MatchReport validation failed: ' . json_encode($entity->getErrors(), JSON_THROW_ON_ERROR),);
+                throw new RuntimeException(
+                    'Validation failed: ' . json_encode($entity->getErrors())
+                );
             }
-
-            // ['atomic' => false] — transaction is owned by the caller (service layer)
-            if (!$table->save($entity, ['atomic' => false])) {
-                throw new RuntimeException('Failed to save MatchReport entity.');
-            }
-
-            return $entity;
-        } catch (Throwable $exception) {
-            throw new RuntimeException($exception->getMessage(), $exception->getCode(), $exception);
+            /** @var MatchReport $matchReport */
+            $matchReport = $this->matchReportsTable->saveOrFail($entity, ['atomic' => false]);
+            return $matchReport;
+        } catch (Throwable $e) {
+            throw new RuntimeException("Failed to create match report: {$e->getMessage()}",
+                $e->getCode(), $e
+            );
         }
+    }
+
+    /**
+     * Prepare data for entity creation . Only type casting, no validation
+     *
+     * @param array<string, mixed> $data Raw input data
+     * @return array<string, mixed> Prepared data
+     * @throws Exception
+     */
+    protected function prepareData(array $data): array
+    {
+        $prepared = [
+            'request_id' => (string)($data['request_id'] ?? ''),
+            'user_id' => (int)($data['user_id'] ?? 0),
+            'match_id' => (string)($data['match_id'] ?? ''),
+            'result' => (string)($data['result'] ?? ''),
+            'score_delta' => (int)($data['score_delta'] ?? 0),
+        ];
+
+        // Handle reported_at separately
+        if (isset($data['reported_at'])) {
+            if (is_numeric($data['reported_at'])) {
+                $prepared['reported_at'] = (new DateTime())->setTimestamp((int)$data['reported_at']);
+            } elseif ($data['reported_at'] instanceof DateTime) {
+                $prepared['reported_at'] = $data['reported_at'];
+            } elseif (is_string($data['reported_at'])) {
+                $prepared['reported_at'] = new DateTime($data['reported_at']);
+            }
+        }
+        return $prepared;
+    }
+
+    /**
+     * Find a match report for the given user and match ID.
+     *
+     * @param User $user The user entity
+     * @param int $matchId The match id
+     * @return MatchReport|null The match report of empty if not found in user match reports
+     */
+    public function findUserMatchReport(User $user, int $matchId): ?MatchReport
+    {
+        return $this->matchReportsTable->find()
+            ->where([
+                'user_id' => $user->id,
+                'match_id' => $matchId,
+            ])->first();
     }
 }

@@ -1,11 +1,14 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 
 use Cake\ORM\TableRegistry;
+use Migrations\BaseSeed;
 
 /**
- * Seed match report table in database
+ * Seeds the match report and related tables with sample data.
  */
-class MatchReportSeeder extends AbstractSeed
+class MatchReportSeeder extends BaseSeed
 {
     private const SCORE_MAP = [
         'win' => 25,
@@ -18,18 +21,16 @@ class MatchReportSeeder extends AbstractSeed
      */
     public function run(): void
     {
-        // Get table instances
         $usersTable = TableRegistry::getTableLocator()->get('Users');
         $matchReportsTable = TableRegistry::getTableLocator()->get('MatchReports');
         $trophyHistoryTable = TableRegistry::getTableLocator()->get('TrophyHistory');
 
-        // Guard: skip if users already seeded
         if ($usersTable->find()->count() > 0) {
             echo "Seeder skipped — data already present.\n";
             return;
         }
 
-        // ── 1. Users ──────────────────────────────────────────
+        // 1. Seed users
         $players = [
             ['Alice', 200],
             ['Bob', 185],
@@ -53,47 +54,39 @@ class MatchReportSeeder extends AbstractSeed
             ['Tina', 20],
         ];
 
-        // Create user entities and save them
         $userEntities = [];
         foreach ($players as [$name, $score]) {
             $user = $usersTable->newEntity([
                 'name' => $name,
                 'score' => $score,
             ]);
-
             $usersTable->saveOrFail($user);
             $userEntities[$name] = $user;
         }
 
         echo sprintf("Inserted %d users.\n", count($userEntities));
 
-        // ── 2. Match reports + trophy_history ─────────────────
+        // 2. Seed match reports and trophy history
         $matchCount = 0;
         $trophyCount = 0;
 
         foreach ($userEntities as $name => $user) {
-            // Each player has 3 matches: one of each outcome for variety
             $results = $this->shuffledResults();
-
-            // Starting score for this player (before the 3 matches)
-            $currentScore = $user->score;
-            $matchScores = array_map(fn($r) => self::SCORE_MAP[$r], $results);
+            $matchScores = array_map(fn(string $result): int => self::SCORE_MAP[$result], $results);
             $totalDelta = array_sum($matchScores);
 
-            // Calculate what the score was before these 3 matches
-            $scoreTracker = $currentScore - $totalDelta;
+            // Calculate the score before these matches
+            $scoreTracker = $user->score - $totalDelta;
 
             foreach ($results as $i => $result) {
                 $delta = self::SCORE_MAP[$result];
                 $scoreBefore = $scoreTracker;
                 $scoreAfter = $scoreTracker + $delta;
 
-                // Generate unique identifiers
                 $matchId = sprintf('%d-%s-%d', $user->id, strtolower($name), $i + 1);
                 $requestId = sprintf('seed-%s-%d', strtolower($name), $i + 1);
-                $reportedAt = new \DateTime("-{$i} hours");
+                $reportedAt = new DateTime("-{$i} hours");
 
-                // Create match report
                 $matchReport = $matchReportsTable->newEntity([
                     'request_id' => $requestId,
                     'user_id' => $user->id,
@@ -102,21 +95,17 @@ class MatchReportSeeder extends AbstractSeed
                     'score_delta' => $delta,
                     'reported_at' => $reportedAt,
                 ]);
-
                 $matchReportsTable->saveOrFail($matchReport);
                 $matchCount++;
 
-                // Create trophy history
-                $reason = 'match_' . $result;
                 $trophyHistory = $trophyHistoryTable->newEntity([
                     'user_id' => $user->id,
                     'match_id' => $matchId,
                     'score_before' => $scoreBefore,
                     'score_after' => $scoreAfter,
                     'score_delta' => $delta,
-                    'reason' => $reason,
+                    'reason' => 'match_' . $result,
                 ]);
-
                 $trophyHistoryTable->saveOrFail($trophyHistory);
                 $trophyCount++;
 
@@ -129,7 +118,7 @@ class MatchReportSeeder extends AbstractSeed
     }
 
     /**
-     * Return a shuffled array with one win, one loss, one draw.
+     * Returns a shuffled array containing one win, one loss, and one draw.
      *
      * @return array<string>
      */

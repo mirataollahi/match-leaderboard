@@ -1,15 +1,17 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 
 namespace App\Controller;
 
-use App\Service\MatchReportService;
-use Cake\Http\Exception\BadRequestException;
-use Throwable;
 use App\Exception\RequestIdConflictException;
 use App\Exception\UserNotFoundException;
 use App\Exception\ValidationException;
+use App\Service\MatchReportService;
 use App\Service\MatchReportValidator;
+use Cake\Http\Exception\BadRequestException;
 use Cake\Http\Response;
+use Throwable;
 
 class MatchesController extends BaseApiController
 {
@@ -24,8 +26,7 @@ class MatchesController extends BaseApiController
     public function report(
         MatchReportValidator $matchReportValidator,
         MatchReportService   $matchReportService
-    ): Response
-    {
+    ): Response {
         $this->request->allowMethod(['post']);
 
         // Rate limiting: max 5 requests per 10 seconds per user_id + IP

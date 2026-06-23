@@ -3,6 +3,7 @@
 namespace App\Repository\MatchReportRepository;
 
 use App\Model\Entity\MatchReport;
+use App\Model\Entity\User;
 use RuntimeException;
 
 /**
@@ -30,4 +31,12 @@ interface MatchReportRepositoryInterface
      * @throws RuntimeException When the save fails.
      */
     public function create(array $data): MatchReport;
+
+    /**
+     * Find user match report from user match reports list
+     * @param User $user The user entity
+     * @param int $matchId The match id
+     * @return MatchReport|null The match report of exists in users match reports list or null of not found
+     */
+    public function findUserMatchReport(User $user, int $matchId): ?MatchReport;
 }
