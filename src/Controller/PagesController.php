@@ -17,13 +17,6 @@ class PagesController extends AppController
      * Displays a view
      *
      * @param string ...$path Path segments.
-     * @return Response|null
-     * @throws ForbiddenException When a directory traversal attempt.
-     * @throws MissingTemplateException When the view file could not
-     *   be found and in debug mode.
-     * @throws NotFoundException When the view file could not
-     *   be found and not in debug mode.
-     * @throws MissingTemplateException In debug mode.
      */
     public function display(string ...$path): ?Response
     {

@@ -2,10 +2,10 @@
 
 namespace App\Controller;
 
-use App\Service\HyperLogger;
 use App\Service\RedisService;
 use Cake\Datasource\ConnectionManager;
 use Cake\Http\Response;
+use Cake\Log\Log;
 use JsonException;
 use Throwable;
 
@@ -62,7 +62,7 @@ class HealthController extends BaseApiController
             $connection->execute('SELECT 1');
             return true;
         } catch (Throwable $e) {
-            HyperLogger::error("Check database health failed : {$e->getMessage()}");
+            Log::error("Check database health failed : {$e->getMessage()}");
             return false;
         }
     }

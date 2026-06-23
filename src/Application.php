@@ -53,6 +53,14 @@ class Application extends BaseApplication
      */
     public function middleware(MiddlewareQueue $middlewareQueue): MiddlewareQueue
     {
+        $csrf = new CsrfProtectionMiddleware([
+            'httponly' => true,
+        ]);
+
+        $csrf->skipCheckCallback(function ($request) {
+            return $request->getPath() === '/matches/report';
+        });
+
         $middlewareQueue
             // Catch any exceptions in the lower layers, and make an error page/response
             ->add(new ErrorHandlerMiddleware(Configure::read('Error'), $this))
@@ -75,9 +83,7 @@ class Application extends BaseApplication
             ->add(new RateLimitMiddleware(new RedisService()))
 
             // Cross Site Request Forgery (CSRF) Protection Middleware
-            ->add(new CsrfProtectionMiddleware([
-                'httponly' => true,
-            ]));
+            ->add($csrf);
 
         return $middlewareQueue;
     }
@@ -106,9 +112,9 @@ class Application extends BaseApplication
             ->addArgument(UserRepositoryInterface::class);
 
         $container->add(MatchReportService::class)
-            ->addArgument(UserRepositoryInterface::class)
-            ->addArgument(MatchReportRepositoryInterface::class)
-            ->addArgument(TrophyHistoryRepositoryInterface::class)
+            ->addArgument(UserRepository::class)
+            ->addArgument(MatchReportRepository::class)
+            ->addArgument(TrophyHistoryRepository::class)
             ->addArgument(RedisService::class);
 
         $container->add(LeaderboardService::class)

@@ -11,6 +11,10 @@ use Throwable;
  */
 class TrophyHistoryRepository implements TrophyHistoryRepositoryInterface
 {
+    public function __construct()
+    {
+
+    }
     /**
      * Persist a score-change audit record to `trophy_history`.
      *

@@ -93,8 +93,8 @@ class BaseApiController extends AppController
         Log::error("[{$controllerName}] Unexpected error: {$message}", $context);
 
         return $this->errorResponse(
-            'INTERNAL_ERROR',
-            'An unexpected error occurred.',
+            $message,
+            $message,
             500
         );
     }

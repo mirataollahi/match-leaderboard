@@ -12,13 +12,6 @@ use RuntimeException;
 interface UserRepositoryInterface
 {
     /**
-     * Finds a user by their unique username.
-     *
-     * @throws UserNotFoundException
-     */
-    public function findByUsername(string $username): User;
-
-    /**
      * Creates and persists a new user with the given username.
      *
      * @throws RuntimeException When save fails

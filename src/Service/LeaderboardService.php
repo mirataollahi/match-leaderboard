@@ -44,7 +44,7 @@ class LeaderboardService
             // Redis is reachable but the sorted set is empty (cold start or
             // flush) — seed it from SQL then retry once.
             Log::info('[LeaderboardService] Redis sorted set is empty, seeding from SQL.', ['scope' => 'leaderboard']);
-            $this->seedRedisFromDatabase();
+            //$this->seedRedisFromDatabase();
 
             $data = $this->redis->getLeaderboard($limit, $offset);
 

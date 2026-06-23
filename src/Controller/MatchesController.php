@@ -29,9 +29,6 @@ class MatchesController extends BaseApiController
     ): Response {
         $this->request->allowMethod(['post']);
 
-        // Rate limiting: max 5 requests per 10 seconds per user_id + IP
-        $this->checkRateLimit();
-
         try {
             // Parse and validate the request body
             $rawData = $this->request->getData();

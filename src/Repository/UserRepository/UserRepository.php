@@ -25,26 +25,6 @@ class UserRepository implements UserRepositoryInterface
     }
 
     /**
-     *Find the user in database base on user unique username
-     * @param string $username
-     * @return User
-     */
-    public function findByUsername(string $username): User
-    {
-        /** @var User|null $user */
-        $user = $this->table->find()
-            ->where(['username' => $username])
-            ->contain(['UserScores'])
-            ->first();
-
-        if ($user === null) {
-            throw new UserNotFoundException($username);
-        }
-
-        return $user;
-    }
-
-    /**
      * Create new user base on the user username
      *
      * @param string $username
@@ -97,30 +77,30 @@ class UserRepository implements UserRepositoryInterface
      */
     public function incrementScore(int $userId, int $scoreDelta): int
     {
-        $connection = ConnectionManager::get('default');
+        $table = TableRegistry::getTableLocator()->get('Users');
+        $user = $table->find()
+            ->where(['id' => $userId])
+            ->epilog('FOR UPDATE')
+            ->first();
 
-        // Raw UPDATE with relative delta — safe under concurrent load
-        // todo : Use ORM here instead of database exec
-        $connection->execute(
-            'UPDATE users SET score = score + :delta, updated_at = NOW() WHERE id = :id',
-            [':delta' => $scoreDelta, ':id' => $userId],
-        );
-
-        // Re-read the new score in the same transaction
-        $row = $connection->execute(
-            'SELECT score FROM users WHERE id = :id',
-            [':id' => $userId],
-        )->fetch('assoc');
-
-        if ($row === false) {
+        if ($user === null) {
             throw new RuntimeException(
-                sprintf('Failed to read score after update for user_id %d', $userId),
+                sprintf('Cannot increment score: user_id %d not found.', $userId),
+            );
+        }
+        $user->score = $user->score + $scoreDelta;
+        if (!$table->save($user, ['atomic' => false])) {
+            throw new RuntimeException(
+                sprintf(
+                    'Failed to save updated score for user_id %d. Errors: %s',
+                    $userId,
+                    json_encode($user->getErrors(), JSON_THROW_ON_ERROR),
+                ),
             );
         }
 
-        return (int)$row['score'];
+        return $user->score;
     }
-
     /**
      * Return all users as lightweight arrays for Redis leaderboard seeding.
      *

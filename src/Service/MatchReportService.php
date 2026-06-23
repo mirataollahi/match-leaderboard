@@ -96,13 +96,6 @@ class MatchReportService
         );
 
         // Step 5: Update Redis leaderboard (non-fatal)
-        $this->redis->upsertLeaderboardScore(
-            (int)$data['user_id'],
-            (string)$user->name,
-            $newScore,
-        );
-
-        // Step 6: Cache idempotency result in Redis
         $response = [
             'success' => true,
             'duplicate' => false,
@@ -110,21 +103,24 @@ class MatchReportService
             'match_id' => (string)$data['match_id'],
             'new_score' => $newScore,
         ];
+        try {
+            $this->redis->upsertLeaderboardScore(
+                (int)$data['user_id'],
+                (string)$user->name,
+                $newScore,
+            );
 
-        $this->redis->storeIdempotencyResult(
-            $requestId,
-            array_merge($response, ['__hash' => $this->payloadHash($data)]),
-        );
+            // Step 6: Cache idempotency result in Redis
+            $this->redis->storeIdempotencyResult(
+                $requestId,
+                array_merge($response, ['__hash' => $this->payloadHash($data)]),
+            );
 
-        $matchReportInfo = json_encode([
-            'scope' => 'match',
-            'request_id' => $requestId,
-            'user_id' => $data['user_id'],
-            'match_id' => $data['match_id'],
-            'result' => $data['result'],
-            'new_score' => $newScore,
-        ]);
-        HyperLogger::info('[MatchReportService] Match recorded.' . $matchReportInfo);
+            return $response;
+        } catch (\Throwable $exception) {
+            Log::error("Redis job to update user leaderboard failed : $exception");
+            // todo : add the try cache in a job to retry after failed
+        }
         return $response;
     }
 

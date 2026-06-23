@@ -28,6 +28,7 @@ class AppExceptionRenderer extends WebExceptionRenderer
             ->withStringBody(json_encode([
                 'success' => false,
                 'message' => $exception->getMessage(),
+                'trace' => $exception->getTrace(),
             ]));
     }
 }

@@ -15,7 +15,6 @@ use Cake\Log\Log;
 /**
  * RateLimitMiddleware
  */
-
 // todo : Use the rate limit instead of using it in parent base api controller class
 class RateLimitMiddleware implements MiddlewareInterface
 {
@@ -27,16 +26,17 @@ class RateLimitMiddleware implements MiddlewareInterface
     }
 
     public function process(
-        ServerRequestInterface $request,
+        ServerRequestInterface  $request,
         RequestHandlerInterface $handler
-    ): ResponseInterface {
+    ): ResponseInterface
+    {
         // Only throttle match report submissions
         $path = $request->getUri()->getPath();
         if (!str_contains($path, '/matches/report')) {
             return $handler->handle($request);
         }
 
-        $body   = $request->getParsedBody() ?? [];
+        $body = $request->getParsedBody() ?? [];
         $userId = (int)($body['user_id'] ?? 0);
 
         if ($userId === 0) {
@@ -52,9 +52,9 @@ class RateLimitMiddleware implements MiddlewareInterface
             $info = $this->redis->getRateLimitInfo($ip, $userId);
 
             Log::warning('Rate limit exceeded', [
-                'scope'    => 'rate_limit',
-                'ip'       => $ip,
-                'user_id'  => $userId,
+                'scope' => 'rate_limit',
+                'ip' => $ip,
+                'user_id' => $userId,
                 'reset_in' => $info['reset_in'],
             ]);
 
@@ -67,7 +67,7 @@ class RateLimitMiddleware implements MiddlewareInterface
                 ->withHeader('X-RateLimit-Remaining', '0')
                 ->withStringBody(json_encode([
                     'success' => false,
-                    'error'   => 'RATE_LIMIT_EXCEEDED',
+                    'error' => 'RATE_LIMIT_EXCEEDED',
                     'message' => 'Too many requests. Please retry after ' . $info['reset_in'] . ' seconds.',
                     'retry_after' => $info['reset_in'],
                 ], JSON_THROW_ON_ERROR));

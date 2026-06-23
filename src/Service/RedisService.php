@@ -82,7 +82,7 @@ class RedisService
             $this->redis = $r;
             $this->available = true;
         } catch (RedisException $e) {
-            HyperLogger::error('[RedisService] Connection failed: ' . $e->getMessage());
+            Log::error('[RedisService] Connection failed: ' . $e->getMessage());
         }
     }
 
@@ -362,7 +362,7 @@ class RedisService
     private function markUnavailable(string $reason): void
     {
         $this->available = false;
-        HyperLogger::warning('[RedisService] Marked unavailable — ' . $reason);
+        Log::error('[RedisService] Marked unavailable — ' . $reason);
         Log::warning('[RedisService] Marked unavailable — ' . $reason, ['scope' => 'redis']);
     }
 }

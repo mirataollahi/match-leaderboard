@@ -3,22 +3,17 @@
 namespace App\Controller;
 
 use App\Service\LeaderboardService;
-use Throwable;
 use Cake\Http\Response;
 use JsonException;
+use Throwable;
 
 class LeaderboardController extends BaseApiController
 {
     /**
      * Retrieve the current leaderboard with pagination
-     *
-     * @param LeaderboardService $leaderboardService
-     * @return Response
      * @throws JsonException
      */
-    public function index(
-        LeaderboardService $leaderboardService,
-    ): Response
+    public function index(LeaderboardService $leaderboardService): Response
     {
         $this->request->allowMethod(['get']);
 
@@ -29,10 +24,12 @@ class LeaderboardController extends BaseApiController
                 return $this->response; // Response already set by validation
             }
 
+
+
             // Get leaderboard data
             $result = $leaderboardService->getLeaderboard(
                 $pagination['limit'],
-                $pagination['offset']
+                $pagination['offset'],
             );
 
             return $this->successResponse([
@@ -43,7 +40,6 @@ class LeaderboardController extends BaseApiController
                     'offset' => $pagination['offset'],
                 ],
             ]);
-
         } catch (Throwable $e) {
             return $this->handleException($e, 'LeaderboardController');
         }
